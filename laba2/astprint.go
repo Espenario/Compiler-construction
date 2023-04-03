@@ -1,0 +1,166 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/format"
+	"go/token"
+	"os"
+	"log"
+	"io/ioutil"
+	"strconv"
+)
+
+
+func changeStr(file *ast.File) {
+
+	new_idents := make(map[string]string)
+	new_idents_rev := make(map[string]string)
+
+	ast.Inspect(file, func(node ast.Node) bool {
+		if _, ok := node.(*ast.GenDecl); ok {
+			return false
+		} else {
+			if basicLit, ok := node.(*ast.BasicLit); ok {
+				if basicLit.Kind == token.STRING {
+					if new_idents[basicLit.Value] == "" {
+						len := len(new_idents)
+						key := "x" + strconv.Itoa(len)
+						new_idents[basicLit.Value] = key
+						new_idents_rev[key] = basicLit.Value
+					}
+				}
+			}
+		}
+		return true
+	})
+
+	keys := []string{}
+
+	for key, value := range new_idents_rev {
+		fmt.Printf("%q is the key for the value %q\n", key, value)
+		keys = append(keys, key)
+	}
+
+	flag := true
+
+	ast.Inspect(file, func(node ast.Node) bool {
+		/*if assignBlock, ok := node.(*ast.FuncDecl); ok {
+			for count := 0; count < len(new_idents); count++ {
+				assignBlock.Body.List = append (
+					[]ast.Stmt{
+						&ast.AssignStmt{
+							Lhs: []ast.Expr{
+								&ast.Ident{
+									Name: keys[count],
+									Obj: ast.NewObj(4, keys[count]),
+								},
+							},
+							Tok: token.DEFINE,
+							Rhs: []ast.Expr{
+								&ast.BasicLit{
+									Kind: token.STRING,
+									Value: new_idents_rev[keys[count]],
+								},
+							},
+						},
+					},
+					assignBlock.Body.List...,
+				)
+			}
+		}
+		if _, ok := node.(*ast.GenDecl); ok {
+			return false
+		} */
+		if flag {
+			for count := 0; count < len(new_idents); count++ {
+				var before, after []ast.Decl
+
+				if len(file.Decls) > 0 {
+					hasImport := false
+					if genDecl, ok := file.Decls[0].(*ast.GenDecl); ok {
+						hasImport = genDecl.Tok == token.IMPORT
+					}
+
+					if hasImport {
+						before, after = []ast.Decl{file.Decls[0]}, file.Decls[1:]
+					} else {
+						after = file.Decls
+					}
+				}
+
+				file.Decls = append(before,
+					&ast.GenDecl{
+						Tok: token.VAR,
+						Specs: []ast.Spec{
+							&ast.ValueSpec{
+								Names: []*ast.Ident{ast.NewIdent(keys[count])},
+								Type:  ast.NewIdent("string"),
+								Values: []ast.Expr{
+									&ast.BasicLit{
+										Kind:  token.STRING,
+										Value: new_idents_rev[keys[count]],
+									},
+								},
+							},
+						},
+					},
+				)
+				file.Decls = append(file.Decls, after...)
+			}
+			flag = false
+		}	
+		
+
+		if args, ok := node.(*ast.CallExpr); ok {
+			for i, elem := range args.Args {
+				if basicLit, ok := elem.(*ast.BasicLit); ok {
+					args.Args[i] = ast.NewIdent(new_idents[basicLit.Value])
+				}
+			}
+		}
+		
+		return true
+		})
+	}
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Printf(" usage : astprint < filename.go >\n")
+		return
+	}
+
+	// Создаём хранилище данных об исходных файлах
+	fset := token.NewFileSet ()
+
+	// Вызываем парсер
+	if file, err := parser.ParseFile (
+		fset, 				   // данные об исходниках
+		os.Args[1] ,		   // имя файла с исходником программы
+		nil , 				   // пусть парсер сам грузит исходник
+		parser.ParseComments , // приказываем сохранять комментарии
+	); err == nil {
+		// Менаяем синтаксическое дерево
+		changeStr(file)
+		// Если парсер отработал без ошибок, печатаем дерево
+		ast.Fprint(os.Stdout, fset, file, nil)
+        // Переводим из дерева обратно в код
+		var buf bytes.Buffer
+		err := format.Node(&buf, fset, file)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Println(buf.String())
+
+		err1 := ioutil.WriteFile("temp.go", []byte(buf.String()), 0777)
+    	if err1 != nil {
+    		log.Fatal(err1)
+    	}
+	} else {
+		// в противном случае, выводим сообщение об ошибке
+		fmt.Printf("Error: %v", err )
+	}
+}

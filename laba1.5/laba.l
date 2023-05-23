@@ -11,13 +11,14 @@
 #define TAG_FRAC 2
 #define TAG_COMMENTS 3
 #define TAG_ERROR 4
+#define TAG_SPACE 5
 
 #include <float.h>
 #include <limits.h>
 
 
 const char *tag_names [] = {
-    "EOF", "LONG", "FRAC", "COMMENTS", "ERROR"
+    "EOF", "LONG", "FRAC", "COMMENTS", "ERROR", "SPACE"
 };
 
 struct Position {
@@ -40,14 +41,20 @@ void print_frag(struct Fragment *f) {
     print_pos(&(f->following));
 }
 
-union Token {
+void print_frag_no_fucking_pointers(struct Fragment *f) {
+    print_pos(&(f->starting));
+    printf("-");
+    print_pos(&(f->following));
+}
+
+struct Token {
     char *word;
     long long_value;
     long numerator_value;
     long denumerator_value;
 };
 
-typedef union Token YYSTYPE;
+typedef struct Token YYSTYPE;
 
 int continued;
 struct Position cur;
@@ -71,7 +78,9 @@ struct Position cur;
     yylloc->following = cur;                 \
 }
 
-long size;
+long cur_num = 0;
+
+struct Fragment *comments_list = (Fragment*)malloc(1000 * sizeof(Fragment));
 
 void init_scanner(char *program) {
     continued = 0;
@@ -92,8 +101,10 @@ void err(const char *msg) {
 SPACE [ \t\r]+
 DIGIT [0-9]
 NUM_LIT {DIGIT}+
-FRAC_LIT {DIGIT}+\\{DIGIT}+
-COMMENTS [\{(.|\n)*\} | \(\*(.|\n)*\*\)]
+FRAC_LIT {DIGIT}+[/]{DIGIT}+
+OPEN_PAR \(\*
+CLOSE_PAR \*\)
+COMMENTS ([\{](\n|[^\}])*[\}])|({OPEN_PAR}(\n|[^{CLOSE_PAR}])*{CLOSE_PAR})
 
 %%
 {NUM_LIT} {
@@ -106,21 +117,31 @@ COMMENTS [\{(.|\n)*\} | \(\*(.|\n)*\*\)]
 	yylval->long_value = value;
 	return TAG_LONG;
 }
+
+{SPACE} {
+	yylval->word = (char*)(" ");
+	return TAG_SPACE;
+}
 {FRAC_LIT} {
     char *endptr;
+
     char *istr = strtok(yytext, "/");
     long num = strtol(istr, &endptr, 10);
-    long denum = strtol(yytext, &endptr, 10);
+    istr = strtok(NULL, "/");
+    long denum = strtol(istr, &endptr, 10);
+
 	if (num > LONG_MAX || denum > LONG_MAX) {
         return TAG_ERROR;
     }
+
 	yylval->numerator_value = num;
     yylval->denumerator_value = denum;
+
 	return TAG_FRAC;
 }
 {COMMENTS} {
-    print_frag(yylloc);
-    printf(" Comment\n");
+    comments_list[cur_num] = *yylloc;
+    cur_num += 1;
     BEGIN(0);
 }
 . {
@@ -158,6 +179,11 @@ int main(int argc, const char **argv) {
     //printf("DDDDDDDDDDDDDDDDD");
     do {
         tag = yylex(&token, &coords);
+
+        if (tag == TAG_EOF) {
+            break;
+        }
+
         printf("%s ", tag_names[tag]);
         print_frag(&coords);
         
@@ -175,6 +201,12 @@ int main(int argc, const char **argv) {
         }
     } while (tag != TAG_EOF);
     printf("\n");
+    printf("Comments:\n");
+    for (int i = 0; i < cur_num; i++) {
+        print_frag(&comments_list[i]);
+        printf("\n");
+    }
+    free(comments_list);
     free(str);
     return 0;
 }

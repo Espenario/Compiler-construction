@@ -1,0 +1,1 @@
+func main(a, b int) int {var o int; o = a; o = o + b; return o}

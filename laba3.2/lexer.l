@@ -51,29 +51,29 @@ void yyerror(YYLTYPE *loc, yyscan_t scanner, long env[26], const char *message) 
 \/  return DIV;
 %   return MOD;
 >   return GREATER;
-<   return LESS;
+\<   return LESS;
 !   return NOT;
-\(  return LEFT_PAREN;
-\)  return RIGHT_PAREN;
+\(  return LPAREN;
+\)  return RPAREN;
 ,   return COMMA;
 ;   return SEMICOLON;
 
 
 [0-9]+  {
-    yylval->number = atoi(yytext);
+    yylval->number = strdup(yytext);
     return NUMBER;
 }
 
 [a-z]   {
-    yylval->variable = yytext[0];
-    return VARIABLE;
+    yylval->ident = strdup(yytext);
+    return IDENT;
 }
 
 
 \+\+    return UN_PLUS_ST;
 --      return UN_MINUS_ST;
 &&      return AND_ST;
-||      return OR_ST;
+\|\|      return OR_ST;
 !=      return NONEQ_ST;
 ==      return EQUAL_ST;
 :=      return DECL_ST;

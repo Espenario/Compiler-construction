@@ -1,4 +1,6 @@
+#!/bin/bash
+
 flex lexer.l
 bison -d parser.y
-gcc lex.yy.c lab9.tab.c -w
-./a.out 
+gcc lex.yy.c parser.tab.c -w
+./a.out -d

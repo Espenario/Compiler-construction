@@ -2164,6 +2164,7 @@ int main(int argc, char *argv[])
 	struct Extra extra;
 	long env[26];
     env[0] = 0;
+    // env[1] = 20;
     char * buffer = 0;
     long length;
     FILE * f = fopen ("input.txt", "rb");
@@ -2173,6 +2174,7 @@ int main(int argc, char *argv[])
         if (argv[1] = "-d") {
             env[1] = 20;
         }
+        // env[1] = atoi(argv[1]);
     }
 
 	init_scanner(f, &scanner, &extra);

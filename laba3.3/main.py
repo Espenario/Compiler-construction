@@ -35,6 +35,30 @@ import parser_edsl as pe
 # <RestList> = ; <ListItem> <RestList> | <Eps>
 # <ListItem> = <Entity> | <TypeName> <Ident>
 
+class SemanticError(pe.Error):
+    pass
+
+
+class RepeatedVariable(SemanticError):
+    def __init__(self, pos, varname):
+        self.pos = pos
+        self.varname = varname
+
+    @property
+    def message(self):
+        return f'Повторная переменная {self.varname}'
+
+
+class UnknownVar(SemanticError):
+    def __init__(self, pos, varname):
+        self.pos = pos
+        self.varname = varname
+
+    @property
+    def message(self):
+        return f'Необъявленная переменная {self.varname}'
+
+
 
 class Type_of_Entity(enum.Enum):
     Struct = "struct"
@@ -50,19 +74,27 @@ class Type(enum.Enum):
 
 
 class Entity(abc.ABC):
-    pass
+    # @abc.abstractmethod
+    # def check(self, vars):
+        pass
 
 
 class Expr(abc.ABC):
-    pass
+    @abc.abstractmethod
+    def check(self, vars):
+        pass
 
 
 @dataclass
 class Empty_Expr(Expr):
+    def check(self, vars):
+        pass
     pass
 
 
 class Expr_Other(abc.ABC):
+    # @abc.abstractmethod
+    # def check(self, vars):
     pass
 
 
@@ -75,18 +107,51 @@ class Empty_Expr_Other(Expr_Other):
 class Var_Expr_Other(Expr_Other):
     types: Type
     value: list[str]
+    value_coords: pe.Fragment
+    @pe.ExAction
+    def create(attrs, coords, res_coord):
+        types, value = attrs
+        ctypes, cvalue = coords
+        return Var_Expr_Other(types, value, cvalue)
 
 
 @dataclass
 class Other_Body:
     name: str  
-    name_coord: pe.Position
+    name_coords: pe.Position
     statements: list[Expr_Other]
-    @pe.ExAction
-    def create(attrs, coords, res_coord):
-        name, statements = attrs
-        cname, clbrace, cstatements, crbrace = coords
-        return Other_Body(name, cname.start, statements)
+    @staticmethod
+    def create(n, st):
+        @pe.ExAction
+        def action(attrs, coords, res_coord):
+            if len(coords) == 2:
+                name, statements = attrs
+                cname, clbrace, cstatements, crbrace = coords
+            if len(coords) == 4:
+                name, statements = attrs
+                cname, clbrace, cstatements, crbrace = coords
+            if len(coords) == 3:
+                name, = attrs
+                clbrace, cstatements, crbrace = coords
+            return Other_Body(n, cstatements.start, st)
+        return action
+    def check(self, vars):
+        for statement in self.statements:
+            fields = set()
+            if isinstance(statement, Var_Expr_Other):
+                for value in statement.value:
+                    if value in fields:
+                        raise RepeatedVariable(statement.value_coords, value)
+                    fields.add(value)
+            if isinstance(statement, Block_Expr_Other):
+                for elem in statement.body:
+                    for var in elem.var:
+                        if var in fields:
+                            raise RepeatedVariable(elem.var_coord, var)
+                        fields.add(var)
+                    if elem.body.name not in vars:
+                        raise UnknownVar(elem.body.name_coords, elem.body.name)
+                    
 
 
 @dataclass
@@ -117,17 +182,26 @@ class Var_Expr(Expr):
         name, = attrs
         cname, = coords
         return Var_Expr(name, cname)
+    def check(self, var):
+        if self.varname not in var:
+            return UnknownVar(self.varname, self.varname_coord)
 
 @dataclass
 class SizeofExpr(Expr):
     name: str   ##n
     name_coord: pe.Position
     value: Type_of_Entity
-    @pe.ExAction
-    def create(attrs, coords, res_coord):
-        name, value = attrs
-        cname, cvalue = coords
-        return SizeofExpr(name, cname, value)
+    @staticmethod
+    def create(n, st):
+        @pe.ExAction
+        def action(attrs, coords, res_coord):
+            name, value = attrs
+            cname, cvalue = coords
+            return SizeofExpr(n, cname, st)
+        return action
+    def check(self, var):
+        if self.name not in var:
+            return UnknownVar(self.name, self.name_coord)
 
 
 @dataclass
@@ -135,12 +209,16 @@ class BinOpExpr(Expr):
     left: Expr
     op: str
     right: Expr
+    def check(self, vars):
+        pass
 
 
 @dataclass
 class Const_Expr(Expr):
     value: typing.Any
     types: Type
+    def check(self, vars):
+        pass
 
 
 @dataclass
@@ -148,22 +226,34 @@ class Statement:
     var_name: str  ## n
     var_name_coords: pe.Position
     expr: Expr
-    @pe.ExAction
-    def create(attrs, coords, res_coord):
-        name, value = attrs
-        cname, cvalue = coords
-        return Statement(name, cname, value)
+    @staticmethod
+    def create(n, st):
+        @pe.ExAction
+        def action(attrs, coords, res_coord):
+            name, value = attrs
+            cname, cvalue = coords
+            return Statement(n, cname, st)
+        return action
+    # def check(self, vars):
+    #     fields = set()
+    #     for 
 
 @dataclass
 class Enum_Body:
     name: str  ## n
     name_coords: pe.Position
     statements: list[Statement]
-    @pe.ExAction
-    def create(attrs, coords, res_coord):
-        name, value = attrs
-        cname, cvalue = coords
-        return Statement(name, cname, value)
+    @staticmethod
+    def create(n, st):
+        @pe.ExAction
+        def action(attrs, coords, res_coord):
+            name, value = attrs
+            cname, cvalue = coords
+            return Enum_Body(n, cname, st)
+        return action
+    def check(self, vars):
+        for statement in self.statements:
+            statement.expr.check(vars)
 
 
 @dataclass
@@ -175,12 +265,32 @@ class Enum_Entity(Entity):
     def create(attrs, coords, res_coord):
         body, var = attrs
         cvar = coords
-        return Other_Entity(body, var, cvar)
+        return Enum_Entity(body, var, cvar)
 
 
 @dataclass
 class Program:
     entities: list[Entity]
+    def check(self):
+        vars = set()
+        st = set()
+        for entity in self.entities:
+            if isinstance(entity, Enum_Entity):
+                var_defs = entity.var
+                st_def = entity.body.name
+            elif isinstance(entity, Other_Entity):
+                var_defs = entity.var
+                st_def = entity.body.name
+            else:
+                var_defs = []
+                st_def = []
+            for var_def in var_defs:
+                if var_def in vars:
+                    raise RepeatedVariable(entity.var_coord, var_def)
+                vars.add(var_def)
+            if st_def in st:
+                raise RepeatedVariable(entity.body.name_coords, st_def)
+            entity.body.check(vars | st)
 
 
 INTEGER = pe.Terminal("INTEGER", "[0-9]+", int, priority=7)
@@ -308,7 +418,7 @@ NRestList |= NListItem, NRestList, lambda li, rli: rli + [li]
 NRestList |= lambda: []
 
 NListItem |= NEntity, Block_Expr_Other
-NListItem |= NTypeName, NIdents, Var_Expr_Other
+NListItem |= NTypeName, NIdents, Var_Expr_Other.create
 NIdents |= NIdent, NRestIdents, lambda ni, ri: ri + [ni]
 NRestIdents |= ",", NIdent, NRestIdents, lambda ni, nis: nis + [ni]
 NRestIdents |= lambda: []
@@ -328,7 +438,8 @@ for filename in sys.argv[1:]:
     try:
         with open(filename) as f:
             tree = p.parse(f.read())
-            pprint(tree)
+            tree.check()
+            print("Errors net")
     except pe.Error as e:
         print(f"Ошибка {e.pos}: {e.message}")
     except Exception as e:

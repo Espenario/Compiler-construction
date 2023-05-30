@@ -1,2 +1,3 @@
-func m(a int,b int) {a = b; for i := 0; i < 10; i++ {if a > b {a =  1}} a = 4;
+func m(a int,b int) {a = b;
+for i := 0; i < 10; i++ {if a > b {a =  1}} a = 4;
 }

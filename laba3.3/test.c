@@ -28,11 +28,11 @@ struct ScreenChar {
 };
 
 struct TextScreen {
-  struct ScreenChar chars[HCHARS][WCHARS];
+  struct ScreenChar chars[HCHARS][WCHARS];       // 
 };
 
-struct GrahpicScreen {
-  enum Color pixels[HPIXELS][WPIXELS];
+struct GraphicScreen {
+  enum Color pixels[HPIXELS][WPIXELS];           // 
 };
 
 union Screen {
@@ -55,6 +55,8 @@ struct Token {
     } starting, following;
   } fragment;
 
+  struct TextScreen text;
+
   enum { Ident, IntConst, FloatConst } type;
 
   union {
@@ -67,4 +69,4 @@ struct Token {
 struct List {
   struct Token value;
   struct List *next;
-};
+}; 

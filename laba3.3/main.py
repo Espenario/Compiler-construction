@@ -2,6 +2,7 @@ import abc
 import enum
 import re
 import sys
+from functools import reduce
 import typing
 from dataclasses import dataclass
 from pprint import pprint
@@ -35,6 +36,8 @@ import parser_edsl as pe
 # <RestList> = ; <ListItem> <RestList> | <Eps>
 # <ListItem> = <Entity> | <TypeName> <Ident>
 
+memory_dict = {"H": 10, "V": 10}
+
 class SemanticError(pe.Error):
     pass
 
@@ -65,6 +68,11 @@ class Type_of_Entity(enum.Enum):
     Enum = "enum"
     Union = "union"
 
+class TypeWeight(enum.Enum):
+    INTEGER = 4
+    DOUBLE = 8
+    CHAR = 4
+    FLOAT = 8
 
 class Type(enum.Enum):
     Integer = "INTEGER"
@@ -83,11 +91,16 @@ class Expr(abc.ABC):
     @abc.abstractmethod
     def check(self, vars):
         pass
+    @abc.abstractmethod
+    def count_memory(self):
+        pass
 
 
 @dataclass
 class Empty_Expr(Expr):
     def check(self, vars):
+        pass
+    def count_memory(self):
         pass
     pass
 
@@ -95,7 +108,9 @@ class Empty_Expr(Expr):
 class Expr_Other(abc.ABC):
     # @abc.abstractmethod
     # def check(self, vars):
-    pass
+    @abc.abstractmethod
+    def count_memory(self):
+        pass
 
 
 @dataclass
@@ -107,12 +122,18 @@ class Empty_Expr_Other(Expr_Other):
 class Var_Expr_Other(Expr_Other):
     types: Type
     value: list[str]
-    value_coords: pe.Fragment
-    @pe.ExAction
-    def create(attrs, coords, res_coord):
-        types, value = attrs
-        ctypes, cvalue = coords
-        return Var_Expr_Other(types, value, cvalue)
+    # value_coords: pe.Fragment
+    # @pe.ExAction
+    # def create(attrs, coords, res_coord):
+    #     types, value = attrs
+    #     ctypes, cvalue = coords
+    #     return Var_Expr_Other(types, value, cvalue)
+    def count_memory(self):
+        # print(self.types)
+        # return 10
+        if self.types == 'INTEGER' or self.types == 'CHAR':
+            return 4 * len(self.value)
+        return 8 * len(self.value)
 
 
 @dataclass
@@ -120,39 +141,69 @@ class Other_Body:
     name: str  
     name_coords: pe.Position
     statements: list[Expr_Other]
-    @staticmethod
-    def create(n, st):
-        @pe.ExAction
-        def action(attrs, coords, res_coord):
-            if len(coords) == 2:
-                name, statements = attrs
-                cname, clbrace, cstatements, crbrace = coords
-            if len(coords) == 4:
-                name, statements = attrs
-                cname, clbrace, cstatements, crbrace = coords
-            if len(coords) == 3:
-                name, = attrs
-                clbrace, cstatements, crbrace = coords
-            return Other_Body(n, cstatements.start, st)
-        return action
+    # @staticmethod
+    # def create(n, st):
+    @pe.ExAction
+    def create(attrs, coords, res_coord):
+        # print('-------------')
+        if len(coords) == 2:
+            name, statements = attrs
+            cname, cstatements = coords
+            return Other_Body(name, cstatements.start, statements)
+        if len(coords) == 4:
+            name, statements = attrs
+            cname, clbrace, cstatements, crbrace = coords
+            return Other_Body(name, cstatements.start, statements)
+        if len(coords) == 3:
+            st, = attrs
+            name = ""
+            clbrace, cstatements, crbrace = coords
+            return Other_Body(name, cstatements.start, st)
+        # print("++++++++++++++++++")
+        # return action
     def check(self, vars):
+        # print("====================")
+        if not(isinstance(self.statements, list)):
+            # print(self.statements)
+            return
         for statement in self.statements:
             fields = set()
+            # print("====================")
             if isinstance(statement, Var_Expr_Other):
                 for value in statement.value:
                     if value in fields:
                         raise RepeatedVariable(statement.value_coords, value)
                     fields.add(value)
             if isinstance(statement, Block_Expr_Other):
-                for elem in statement.body:
-                    for var in elem.var:
-                        if var in fields:
-                            raise RepeatedVariable(elem.var_coord, var)
-                        fields.add(var)
-                    if elem.body.name not in vars:
-                        raise UnknownVar(elem.body.name_coords, elem.body.name)
-                    
-
+                # print(statement.body)
+                statement.check(vars)            
+                # for elem in statement.body:
+                # print("====================")        
+                elem = statement.body
+                # print(vars, elem.body.name)
+                for var in elem.var:
+                    # print("====================")
+                    if var in fields:
+                        # print("====================")
+                        raise RepeatedVariable(elem.var_coord, var)
+                    # print("====================")
+                    fields.add(var)
+                if elem.body.name not in vars and elem.body.name != '':
+                    raise UnknownVar(elem.body.name_coords, elem.body.name)
+                
+    def count_memory(self):
+        if not(isinstance(self.statements, list)):
+                
+                return self.statements.count_memory()
+        res_memo = 0
+        for statement in self.statements:
+            if isinstance(statement, Var_Expr_Other):
+                # print("ffffffffffffffff")
+                res_memo += statement.count_memory()
+            if isinstance(statement, Block_Expr_Other): 
+                # print("dsssssssss", statement)
+                res_memo += statement.body.count_memory()
+        return res_memo
 
 @dataclass
 class Other_Entity(Entity):
@@ -163,14 +214,67 @@ class Other_Entity(Entity):
     @pe.ExAction
     def create(attrs, coords, res_coord):
         types, body, var = attrs
-        cvar = coords
+        ctype, cbody, cvar = coords
         return Other_Entity(types, body, var, cvar)
+    def check(self, vars):
+        # print(self.body)
+        # print(self.body.statements, '+++++++++++++')
+        # if isinstance(self.body.statements, list):
+            
+        #     # print("dddddddddddd")
+        #     st_name = self.body.name
+        #     var_names = self.var 
+        #     # print(vars, self.body.name, var_names)
+        #     for var in var_names:
+        #         if var in vars:
+        #             raise RepeatedVariable(self.var_coord, var)
+        #         vars.add(var)
+        #     if st_name in vars and st_name not in var_names:
+        #         raise RepeatedVariable(self.body.name_coords, st_name)
+        #     vars.add(st_name)
+        # print("============")
+        self.body.check(vars)
+        # print(self.var, '--------------')
+        # print("============")
+        if isinstance(self.body.statements, list):
+            print("Memory used for", self.body.name, self.body.count_memory())
+        if self.body.name not in memory_dict:
+            memory_dict[self.body.name] = self.body.count_memory()
+        # print(memory_dict, 'ddddddddddddddddd')
 
-
+    def count_memory(self):
+        if not(isinstance(self.body.statements, list)):
+            name = self.body.statements.var_name
+            m = re.findall('\[(.+?)\]', name)
+            # print([memory_dict[i] for i in m], "=========")
+            if m:
+                return memory_dict[self.body.name] * reduce(lambda x, y: x*y, [memory_dict[i] for i in m])
+        return memory_dict[self.body.name]
 
 @dataclass
 class Block_Expr_Other(Expr_Other):
     body: list[Other_Entity]
+    def check(self, vars):
+        if isinstance(self.body.body.statements, list):
+            
+            # print("dddddddddddd")
+            st_name = self.body.body.name
+            var_names = self.body.var 
+            # print(vars, self.body.name, var_names)
+            for var in var_names:
+                if var in vars:
+                    raise RepeatedVariable(self.body.var_coord, var)
+                if var != '':
+                    vars.add(var)
+            if st_name in vars and st_name not in var_names:
+                raise RepeatedVariable(self.body.body.name_coords, st_name)
+            if st_name != '':
+                vars.add(st_name)
+        # print("============")
+        # print(self.body)
+        self.body.check(vars)
+    def count_memory(self):
+        pass
 
 
 @dataclass
@@ -185,23 +289,25 @@ class Var_Expr(Expr):
     def check(self, var):
         if self.varname not in var:
             return UnknownVar(self.varname, self.varname_coord)
+    def count_memory(self):
+        return 4
 
 @dataclass
 class SizeofExpr(Expr):
     name: str   ##n
     name_coord: pe.Position
     value: Type_of_Entity
-    @staticmethod
-    def create(n, st):
-        @pe.ExAction
-        def action(attrs, coords, res_coord):
-            name, value = attrs
-            cname, cvalue = coords
-            return SizeofExpr(n, cname, st)
-        return action
+    @pe.ExAction
+    def create(attrs, coords, res_coord):
+        # print(attrs)
+        value, name = attrs[0]
+        csizeof, clparen, cname, crparen = coords
+        return SizeofExpr(name, cname, value)
     def check(self, var):
         if self.name not in var:
             return UnknownVar(self.name, self.name_coord)
+    def count_memory(self):
+        return 4
 
 
 @dataclass
@@ -211,6 +317,10 @@ class BinOpExpr(Expr):
     right: Expr
     def check(self, vars):
         pass
+    def count_memory(self):
+        if self.op == '/':
+            return 8
+        else: return 4
 
 
 @dataclass
@@ -219,6 +329,10 @@ class Const_Expr(Expr):
     types: Type
     def check(self, vars):
         pass
+    def count_memory(self):
+        if self.types == 'INTEGER' or self.types == 'CHAR':
+            return 4 
+        return 8
 
 
 @dataclass
@@ -226,34 +340,69 @@ class Statement:
     var_name: str  ## n
     var_name_coords: pe.Position
     expr: Expr
-    @staticmethod
-    def create(n, st):
-        @pe.ExAction
-        def action(attrs, coords, res_coord):
+    @pe.ExAction
+    def create(attrs, coords, res_coord):
+        pass
+        if len(coords) == 1:
+            name, = attrs
+            cname, = coords
+            value = Empty_Expr()
+        if len(coords) == 3:
             name, value = attrs
-            cname, cvalue = coords
-            return Statement(n, cname, st)
-        return action
-    # def check(self, vars):
-    #     fields = set()
-    #     for 
+            cname, ceq, cvalue = coords
+        return Statement(name, cname, value)
+    def check(self, vars):
+        # print(self.var_name, '-------')
+        self.expr.check(vars)
+        if isinstance(self.expr, Const_Expr):
+            memory_dict[self.var_name] = self.expr.value
+            print(self.var_name, "value", self.expr.value)
+    def count_memory(self):
+        # print(self.var_name)
+        if isinstance(self.expr, Empty_Expr):
+            return 4
+        return self.expr.count_memory()
+
 
 @dataclass
 class Enum_Body:
     name: str  ## n
     name_coords: pe.Position
     statements: list[Statement]
-    @staticmethod
-    def create(n, st):
-        @pe.ExAction
-        def action(attrs, coords, res_coord):
-            name, value = attrs
-            cname, cvalue = coords
-            return Enum_Body(n, cname, st)
-        return action
+    @pe.ExAction
+    def create(attrs, coords, res_coord):
+        # print('-------------')
+        if len(coords) == 2:
+            name, statements = attrs
+            cname, cstatements = coords
+            return Enum_Body(name, cstatements.start, statements)
+        if len(coords) == 4:
+            name, statements = attrs
+            cname, clbrace, cstatements, crbrace = coords
+            return Enum_Body(name, cstatements.start, statements)
+        if len(coords) == 3:
+            # print("=--------------")
+            st, = attrs
+            name = ""
+            clbrace, cstatements, crbrace = coords
+            return Enum_Body(name, cstatements.start, st)
     def check(self, vars):
+        # print("fffffffffffffff")
+        if not(isinstance(self.statements, list)):
+            # print("dddddddddddddd")
+            self.statements.check(vars)
+            return
         for statement in self.statements:
-            statement.expr.check(vars)
+            statement.check(vars)
+
+    def count_memory(self):
+        res_memo = 0
+        if not(isinstance(self.statements, list)):
+            # print("dddddddddddddd")
+            return self.statements.count_memory()
+        for statement in self.statements:
+            res_memo += statement.count_memory()
+        return res_memo
 
 
 @dataclass
@@ -264,9 +413,36 @@ class Enum_Entity(Entity):
     @pe.ExAction
     def create(attrs, coords, res_coord):
         body, var = attrs
-        cvar = coords
+        cenum, cbody, cvar = coords
         return Enum_Entity(body, var, cvar)
+    def check(self, vars):
+        # if isinstance(self.body.statements, list):
+            
+        #     # print("dddddddddddd")
+        #     st_name = self.body.name
+        #     var_names = self.var 
+        #     print(vars, self.body.name, var_names)
+        #     for var in var_names:
+        #         if var in vars:
+        #             raise RepeatedVariable(self.var_coord, var)
+        #         vars.add(var)
+        #     if st_name in vars and st_name not in var_names:
+        #         raise RepeatedVariable(self.body.name_coords, st_name)
+        #     vars.add(st_name)
+        self.body.check(vars)
+        if isinstance(self.body.statements, list):
+            print("Memory used for", self.body.name, self.body.count_memory())
+            memory_dict[self.body.name] = self.body.count_memory()
 
+    def count_memory(self):
+        if not(isinstance(self.body.statements, list)):
+            name = self.body.statements.var_name
+            # print(name)
+            m = re.findall('\[(.+?)\]', name)
+            if m:
+                # print([memory_dict[i] for i in m], "=========")
+                return memory_dict[self.body.name] * reduce(lambda x, y: x*y, [memory_dict[i] for i in m])
+        return memory_dict[self.body.name]
 
 @dataclass
 class Program:
@@ -275,22 +451,28 @@ class Program:
         vars = set()
         st = set()
         for entity in self.entities:
+            # print(entity)
             if isinstance(entity, Enum_Entity):
                 var_defs = entity.var
                 st_def = entity.body.name
+                # print('----', st_def)
             elif isinstance(entity, Other_Entity):
                 var_defs = entity.var
                 st_def = entity.body.name
+                # print('----', st_def)
             else:
                 var_defs = []
                 st_def = []
             for var_def in var_defs:
                 if var_def in vars:
                     raise RepeatedVariable(entity.var_coord, var_def)
-                vars.add(var_def)
+                if var_def != '':
+                    vars.add(var_def)
             if st_def in st:
                 raise RepeatedVariable(entity.body.name_coords, st_def)
-            entity.body.check(vars | st)
+            if st_def != '':
+                st.add(st_def)
+            entity.check(vars | st)
 
 
 INTEGER = pe.Terminal("INTEGER", "[0-9]+", int, priority=7)
@@ -335,8 +517,8 @@ NOption3, NOption4, NIdents, NRestIdents, NRestEntities = map(
 )
 
 
-NProgram |= NEntity, ";", NRestEntities, lambda ent, pr: Program(pr + [ent])
-NRestEntities |= NEntity, ";", NRestEntities, lambda ent, rent: rent + [ent]
+NProgram |= NEntity, ";", NRestEntities, lambda ent, pr: Program([ent] + pr)
+NRestEntities |= NEntity, ";", NRestEntities, lambda ent, rent: [ent] + rent
 NProgram |= lambda: []
 NRestEntities |= lambda: []
 
@@ -348,23 +530,23 @@ NEntity |= NRestType, NEntityBody, NEntityVar, Other_Entity.create
 
 NEntityBodyEnum |= NEntityName, "{", NEnumList, "}", Enum_Body.create
 NEntityBodyEnum |= NEntityName, NEnumListItem, Enum_Body.create
-NEntityBodyEnum |= "{", NEnumList, "}", lambda t: Enum_Body.create('', t)
+NEntityBodyEnum |= "{", NEnumList, "}", Enum_Body.create
 
 NOption1 |= "{", NEnumList, "}"
 NOption1 |= NEnumListItem, lambda eli: [eli]
 
-NEnumList |= NEnumListItem, ",", NEnumList, lambda eli, reli: reli + [eli]
+NEnumList |= NEnumListItem, ",", NEnumList, lambda eli, reli: [eli] + reli
 NEnumList |= NEnumListItem, lambda eli: [eli]
 NEnumList |= lambda: []
-NRestEnumList |= ",", NEnumListItem, NRestEnumList, lambda eli, reli: reli + [eli]
+NRestEnumList |= ",", NEnumListItem, NRestEnumList, lambda eli, reli: [eli] + reli
 NRestEnumList |= lambda: []
 
-NEnumListItem |= NIdent, "=", NArith, lambda t, r: Statement.create(t, r)
-NEnumListItem |= NIdent, "=", NExpr, lambda t, r: Statement.create(t, r)
-NEnumListItem |= NIdent, lambda t: Statement.create(t, Empty_Expr())
+NEnumListItem |= NIdent, "=", NArith, Statement.create
+NEnumListItem |= NIdent, "=", NExpr, Statement.create
+NEnumListItem |= NIdent, Statement.create
 
 
-NExpr |= KW_SIZEOF, "(", NOption2, ")", lambda t: SizeofExpr.create(*t[::-1])
+NExpr |= KW_SIZEOF, "(", NOption2, ")", SizeofExpr.create
 
 NTypes |= KW_ENUM, lambda: "enum"
 NTypes |= NRestType, lambda t: t
@@ -398,29 +580,29 @@ NNumber |= REAL, lambda v: Const_Expr(v, Type.Float)
 
 NIdent |= VARNAME
 
-NEntityVar |= NEntityName, NRestNames, lambda en, ren: ren + [en]
+NEntityVar |= NEntityName, NRestNames, lambda en, ren: [en] + ren
 NEntityVar |= lambda: []
-NRestNames |= ",", NEntityName, NRestNames, lambda en, ren: ren + [en]
+NRestNames |= ",", NEntityName, NRestNames, lambda en, ren: [en] + ren
 NRestNames |= lambda: []
 
 # NEntityBody |= NEntityName, NOption4, Other_Body
 NEntityBody |= NEntityName, "{", NList, "}", Other_Body.create
 NEntityBody |= NEntityName, NEnumListItem, Other_Body.create
-NEntityBody |= "{", NList, "}", lambda t: Other_Body.create('', t)
+NEntityBody |= "{", NList, "}", Other_Body.create
 
 # NOption4 |= "{", NList, "}", lambda t: t
 # NOption4 |= NEnumListItem, lambda t: [t]
 
-NList |= NListItem, ";", NList, lambda li, rli: rli + [li]
+NList |= NListItem, ";", NList, lambda li, rli: [li] + rli
 NList |= lambda: []
 
-NRestList |= NListItem, NRestList, lambda li, rli: rli + [li]
+NRestList |= NListItem, NRestList, lambda li, rli: [li] + rli
 NRestList |= lambda: []
 
 NListItem |= NEntity, Block_Expr_Other
-NListItem |= NTypeName, NIdents, Var_Expr_Other.create
-NIdents |= NIdent, NRestIdents, lambda ni, ri: ri + [ni]
-NRestIdents |= ",", NIdent, NRestIdents, lambda ni, nis: nis + [ni]
+NListItem |= NTypeName, NIdents, Var_Expr_Other
+NIdents |= NIdent, NRestIdents, lambda ni, ri: [ni] + ri
+NRestIdents |= ",", NIdent, NRestIdents, lambda ni, nis: [ni] + nis
 NRestIdents |= lambda: []
 
 

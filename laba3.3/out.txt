@@ -1,1 +1,25 @@
-Can't instantiate abstract class Var_Expr_Other with abstract method check
+Memory used for COORDS 8
+COLOR_RED value 1
+COLOR_GREEN value 2
+COLOR_BLUE value 4
+COLOR_HIGHLIGHT value 8
+Memory used for COLOR 32
+Memory used for SCREENTYPE 8
+HPIXELS value 480
+WPIXELS value 640
+HCHARS value 24
+WCHARS value 80
+Memory used for  32
+Memory used for SCREENCHAR 68
+Memory used for TEXTSCREEN 130560
+Memory used for GRAPHICSCREEN 9830400
+Memory used for SCREEN 9960960
+PAGE_SIZE value 4096
+Memory used for  20
+Memory used for POS 8
+Memory used for FRAGMENT 8
+Memory used for  12
+Memory used for  16
+Memory used for TOKEN 130592
+Memory used for LIST 130596
+Errors net

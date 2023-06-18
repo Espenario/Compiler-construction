@@ -1,49 +1,48 @@
-from enum import Enum, auto
 from copy import deepcopy, copy
 
-class DomainTag(Enum):
-    Start = auto()    # 1
-    Whitespace = auto()    # 2
-    Ident1 = auto()    # 3
-    Ident2 = auto()    # 4
-    Ident3 = auto()    # 5
-    Ident4 = auto()    # 6
-    Ident5 = auto()    # 7
-    Ident6 = auto()    # 8
-    Ident7 = auto()    # 9
-    Ident8 = auto()    # 10
-    Keyword1 = auto()    # 11
-    Keyword2 = auto()    # 12
-    Num_liter = auto()    # 13
-    Operation1 = auto()    # 14
-    Operation = auto()    # 15
-    Comment = auto()    # 16
-    Error_Comment = auto()    # 17
-    Right_Comment = auto()    # 18
-    Error = auto()    # 19
-    Commentary = auto()    # 20
-    Unknown = auto()    # 21
-    EndOfProgramm = auto()    # 22
+class Tags_of_Domains():
+    Tag_Start = 1   # 1
+    Tag_Space = 2    # 2
+    Tag_First_id = 3   # 3
+    Tag_Second_id = 4    # 4
+    Tag_Third_id = 5    # 5
+    Tag_Fourth_id = 6    # 6
+    Tag_Fifth_id = 7    # 7
+    Tag_Sixth_id = 8    # 8
+    Tag_Seventh_id = 9    # 9
+    Tag_Eight_id = 10    # 10
+    Tag_First_KW = 11   # 11
+    Tag_Second_KW = 12    # 12
+    Tag_Num_liter = 13    # 13
+    Tag_First_Op = 14    # 14
+    Tag_Second_Op = 15    # 15
+    Tag_Com = 16    # 16
+    Tag_Error_Comment = 17    # 17
+    Tag_Right_Comment = 18    # 18
+    Tag_Error = 19    # 19
+    Tag_Commentary = 20    # 20
+    Tag_Unknown = 21    # 21
+    Tag_EndOfProgramm = 22    # 22
 
-class ErrorMessage():
+class Token:
 
-    def __init__(self, is_error = None, text = None, position = None):
-        self.is_error = is_error
-        self.text = text
-        self.position = position
+    def __init__(self, tag, coords, value = None):
+        self.tag = tag
+        self.coords = coords
+        self.value = value
 
     def __repr__(self):
-        return f"{self.text} + {self.position}"
+        return self.tag + '(' + self.coords.starting + '-' + self.coords.following + ')' + ':' + self.value
     
 
-class Fragment():
+class Fragment:
 
     def __init__(self, starting, following):
         self.starting = starting
         self.following = following
     
     def __repr__(self):
-        return f"{self.starting} - {self.following}"
+        return self.starting + '-' + self.following
         
 
 class Position:
@@ -122,25 +121,27 @@ class Position:
         return "{},{}".format(self.line, self.pos)
     
 
-class Token:
+class EM():
 
-    def __init__(self, tag, coords, value = None):
-        self.tag = tag
-        self.coords = coords
-        self.value = value
+    def __init__(self, is_e = None, text = None, position = None):
+        self.value = text
+        self.pos = position
+        self.error = is_e
+        
 
     def __repr__(self):
-        return f"{self.tag} ({self.coords.starting} - {self.coords.following}) : {self.value}"
+        return self.value + '+' + self.pos
+    
     
 
-class Lex_matcher:
+class Match_table_lex:
 
-    def __init__(self, text_program = None):
-        self.text_program = text_program
-        self.final_state = {DomainTag.Whitespace, DomainTag.Keyword1, DomainTag.Commentary, DomainTag.Num_liter, \
-                            DomainTag.Error, DomainTag.Operation, DomainTag.Operation1, DomainTag.Ident8, \
-                            DomainTag.Keyword2, DomainTag.Ident7, DomainTag.Ident6, DomainTag.Ident5, DomainTag.Ident4, \
-                            DomainTag.Ident3, DomainTag.Ident2, DomainTag.Ident1}
+    def __init__(self, program = None):
+        self.program = program
+        self.f_states = {Tags_of_Domains.Tag_Space, Tags_of_Domains.Tag_First_KW, Tags_of_Domains.Tag_Commentary, Tags_of_Domains.Tag_Num_liter, \
+                            Tags_of_Domains.Tag_Error, Tags_of_Domains.Tag_First_Op, Tags_of_Domains.Tag_Second_Op, Tags_of_Domains.Tag_Eight_id, \
+                            Tags_of_Domains.Tag_Second_KW, Tags_of_Domains.Tag_Seventh_id, Tags_of_Domains.Tag_Sixth_id, Tags_of_Domains.Tag_Fifth_id, Tags_of_Domains.Tag_Fourth_id, \
+                            Tags_of_Domains.Tag_Third_id, Tags_of_Domains.Tag_Second_id, Tags_of_Domains.Tag_First_id}
         self.symbols = {'c' : 0, 'a' : 1,'s' : 2, 'e' : 3,'b' : 4, 'r' : 5,'k' : 6, ')' : 11,'(' : 12, '*' : 13}
         self.table = [
                     #  c,  a,  s,  e,  b,  r,  k, Lt, Di, Ws, X,   ),  (,  *
@@ -190,27 +191,27 @@ class Lex_matcher:
             if prev_state != 2 and prev_state != 1 and prev_state != 21:
                 end = deepcopy(self.cur)
                 if prev_state == 19:
-                    return Token(DomainTag.Error, Fragment(start, end), 1)
-                elif DomainTag(prev_state) not in self.final_state and DomainTag(prev_state) == DomainTag.Operation1:
-                    return Token(DomainTag.Error, Fragment(start, end), 2)
-                elif DomainTag(prev_state) not in self.final_state and DomainTag(prev_state) == DomainTag.Comment:
-                    return Token(DomainTag.Error, Fragment(start, end), 3)
-                elif DomainTag(prev_state) not in self.final_state:
-                    return Token(DomainTag.Error, Fragment(start, end), 4)
+                    return Token(Tags_of_Domains.Error, Fragment(start, end), 1)
+                elif Tags_of_Domains(prev_state) not in self.final_state and Tags_of_Domains(prev_state) == Tags_of_Domains.Operation1:
+                    return Token(Tags_of_Domains.Error, Fragment(start, end), 2)
+                elif Tags_of_Domains(prev_state) not in self.final_state and Tags_of_Domains(prev_state) == Tags_of_Domains.Comment:
+                    return Token(Tags_of_Domains.Error, Fragment(start, end), 3)
+                elif Tags_of_Domains(prev_state) not in self.final_state:
+                    return Token(Tags_of_Domains.Error, Fragment(start, end), 4)
                 else:
                     #print(self.text_program[start.get_index():])
-                    return Token(DomainTag(prev_state), Fragment(start, end), self.text_program[start.get_index():end.get_index()])
+                    return Token(Tags_of_Domains(prev_state), Fragment(start, end), self.text_program[start.get_index():end.get_index()])
             else:
                 while self.cur.cur_position() != -1 and self.cur.number_column(self.symbols) == -1:
                     self.cur.next()
                 end = deepcopy(self.cur)
-                return Token(DomainTag.Error, Fragment(start, end), 5)    
-        return Token(DomainTag.EndOfProgramm, Fragment(self.cur, self.cur))       
+                return Token(Tags_of_Domains.Error, Fragment(start, end), 5)    
+        return Token(Tags_of_Domains.EndOfProgramm, Fragment(self.cur, self.cur))       
 
     def create_tokens_list(self):
         token_list = []
         token = self.get_token()
-        while token.tag != DomainTag.EndOfProgramm:
+        while token.tag != Tags_of_Domains.EndOfProgramm:
             token_list.append(token)
             token = self.get_token()
         token_list.append(token)
